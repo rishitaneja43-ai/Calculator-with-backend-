@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Calculator</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #121214; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; gap: 40px; padding: 20px; flex-wrap: wrap; }
+        .calc-container, .history-container { background: #1e1e24; border-radius: 16px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); width: 340px; }
+        .history-container { width: 400px; height: 440px; display: flex; flex-direction: column; }
+        
+        /* User ID Input */
+        .user-box { margin-bottom: 15px; display: flex; gap: 10px; }
+        .user-box input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #3a3a44; background: #2a2a32; color: #fff; outline: none; }
+        
+        /* Screen */
+        .screen { background: #0c0c0e; border-radius: 8px; padding: 16px; text-align: right; margin-bottom: 20px; min-height: 80px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+        .screen .history-hint { color: #666; font-size: 0.9rem; margin-bottom: 4px; }
+        .screen .current-val { font-size: 2rem; font-weight: bold; word-break: break-all; }
+        
+        /* Buttons Grid */
+        .buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        button { background: #2a2a32; border: none; border-radius: 8px; color: #fff; font-size: 1.25rem; padding: 18px 0; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #3a3a44; }
+        button.operator { background: #ff9f0a; color: #fff; font-weight: bold; }
+        button.operator:hover { background: #cc7f08; }
+        button.clear { background: #ff453a; }
+        button.clear:hover { background: #cc372e; }
+        
+        /* Shared History Logs */
+        h2 { font-size: 1.2rem; margin-bottom: 12px; color: #a0a0a5; border-bottom: 1px solid #2a2a32; padding-bottom: 8px; }
+        .log-list { flex: 1; overflow-y: auto; list-style: none; }
+        .log-item { background: #2a2a32; padding: 10px; border-radius: 6px; margin-bottom: 8px; font-size: 0.95rem; border-left: 4px solid #ff9f0a; }
+        .log-item span { color: #8e8e93; font-size: 0.8rem; display: block; margin-bottom: 2px; }
+    </style>
+</head>
+<body>
+
+    <!-- Calculator Interface -->
+    <div class="calc-container">
+        <div class="user-box">
+            <input type="text" id="username" value="User_1" placeholder="Enter your name">
+        </div>
+        <div class="screen">
+            <div class="history-hint" id="prev-input"></div>
+            <div class="current-val" id="display">0</div>
+        </div>
+        <div class="buttons">
+            <button class="clear" onclick="clearScreen()">C</button>
+            <button onclick="appendValue('(')">(</button>
+            <button onclick="appendValue(')')">)</button>
+            <button class="operator" onclick="appendValue('/')">/</button>
+            
+            <button onclick="appendValue('7')">7</button>
+            <button onclick="appendValue('8')">8</button>
+            <button onclick="appendValue('9')">9</button>
+            <button class="operator" onclick="appendValue('*')">*</button>
+            
+            <button onclick="appendValue('4')">4</button>
+            <button onclick="appendValue('5')">5</button>
+            <button onclick="appendValue('6')">6</button>
+            <button class="operator" onclick="appendValue('-')">-</button>
+            
+            <button onclick="appendValue('1')">1</button>
+            <button onclick="appendValue('2')">2</button>
+            <button onclick="appendValue('3')">3</button>
+            <button class="operator" onclick="appendValue('+')">+</button>
+            
+            <button onclick="appendValue('0')">0</button>
+            <button onclick="appendValue('.')">.</button>
+            <button style="grid-column: span 2;" class="operator" onclick="sendCalculation()">=</button>
+        </div>
+    </div>
+
+    <!-- Live Multi-User Logs -->
+    <div class="history-container">
+        <h2>Global Calculation Log</h2>
+        <ul class="log-list" id="log-list">
+            <!-- Logs populate here -->
+        </ul>
+    </div>
+
+    <script>
+        const display = document.getElementById('display');
+        const prevInput = document.getElementById('prev-input');
+        const usernameInput = document.getElementById('username');
+        const logList = document.getElementById('log-list');
+
+        // Backend URL (Point to local server during testing)
+        const BACKEND_URL = 'http://localhost:5000';
+
+        function appendValue(val) {
+            if (display.innerText === '0' && !isNaN(val)) {
+                display.innerText = val;
+            } else {
+                display.innerText += val;
+            }
+        }
+
+        function clearScreen() {
+            display.innerText = '0';
+            prevInput.innerText = '';
+        }
+
+        // Send equation to backend API for execution and logging
+        async function sendCalculation() {
+            const equation = display.innerText;
+            const user = usernameInput.value.trim() || 'Anonymous';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/calculate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user, equation })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    display.innerText = data.result;
+                    prevInput.innerText = equation;
+                    fetchHistory(); // Refresh global stream
+                } else {
+                    display.innerText = 'Error';
+                }
+            } catch (err) {
+                display.innerText = 'Server Error';
+            }
+        }
+
+        // Fetch logs submitted by everyone
+        async function fetchHistory() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/history`);
+                const data = await response.json();
+                logList.innerHTML = '';
+                
+                data.forEach(log => {
+                    const li = document.createElement('li');
+                    li.className = 'log-item';
+                    li.innerHTML = `<span>Calculated by ${log.user}</span>${log.equation} = <strong>${log.result}</strong>`;
+                    logList.appendChild(li);
+                });
+            } catch (err) {
+                console.error('Cannot load global log history.');
+            }
+        }
+
+        // Check for updates every 3 seconds
+        setInterval(fetchHistory, 3000);
+        fetchHistory();
+    </script>
+</body>
+</html>
